@@ -92,6 +92,13 @@ export default function App() {
   const [files, setFiles] = useState([])
   const [input, setInput] = useState('')
   const [error, setError] = useState('')
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('theme') || 'dark'
+    } catch {
+      return 'dark'
+    }
+  })
 
   const wsRef = useRef(null)
   const activeRef = useRef(null)
@@ -109,6 +116,14 @@ export default function App() {
       setFiles(await api.files(id))
     } catch {}
   }, [])
+
+  // Theme: persist the choice and reflect it on <html data-theme>.
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    try {
+      localStorage.setItem('theme', theme)
+    } catch {}
+  }, [theme])
 
   // Poll session list (keeps sidebar status/preview fresh across sessions).
   useEffect(() => {
@@ -254,7 +269,16 @@ export default function App() {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          云端 <span>Agent</span> 工作台
+          <span className="title">
+            云端 <span>Agent</span> 工作台
+          </span>
+          <button
+            className="theme-toggle"
+            title="切换日间 / 夜间模式"
+            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+          >
+            {theme === 'dark' ? '☀ 日间' : '☾ 夜间'}
+          </button>
         </div>
         <div className="newbtns">
           <button onClick={() => createSession('dev')}>+ 开发会话</button>
