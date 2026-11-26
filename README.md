@@ -12,7 +12,7 @@
 - **持久化与续聊**：会话、消息、文件都落盘；重启后历史仍在，继续发消息会以 `--resume` 续接同一 CLI 会话。
 - **文件工作区**：上传材料、浏览/下载助手产出（面板中的文件直接来自该会话工作目录）。
 - **异常处理**：任务可取消、超时可兜底、CLI 报错会在界面提示、断线自动重连并补齐消息。
-- **人工确认（HITL）**：助手修改文件（`Write/Edit/MultiEdit/NotebookEdit`）前会暂停，在浏览器弹窗展示 diff，由你「允许 / 拒绝 / 本次会话都允许」。
+- **人工确认（HITL）**：助手修改文件（`Write/Edit/MultiEdit/NotebookEdit`）或执行**写操作类 Bash 命令**前会暂停，在浏览器弹窗展示 diff/命令，由你「允许 / 拒绝 / 本次会话都允许」。
 
 ## 技术方案（图文）
 
@@ -141,7 +141,7 @@ python3 demo/smoke.py
 
 助手在执行 **文件修改类工具**（`Write` / `Edit` / `MultiEdit` / `NotebookEdit`）之前，必须经过用户确认：
 
-1. 通过 Claude Code 的 **PreToolUse 钩子**（`backend/app/approve_hook.py`，随 `--settings` 注入）在工具执行前阻塞；
+1. 通过 Claude Code 的 **PreToolUse 钩子**（`backend/app/approve_hook.py`，随 `--settings` 注入）在工具执行前阻塞；`Bash` 命令先做启发式判定——只读命令（`ls/cat/grep` 等）直接放行，疑似写操作（重定向、`rm/mv/cp/tee/sed -i`、包安装、`git` 写子命令、运行脚本/解释器等）才进入审批；
 2. 钩子把 `tool_name / tool_input / cwd` 发到后端 `/internal/approval`，后端计算**统一 diff**（当前文件内容 vs 修改后内容）；
 3. 通过 WebSocket 把 `permission_request` 推给浏览器，弹出**复用模态框**展示 diff（新增/删除行高亮）；
 4. 用户选择：
@@ -177,7 +177,7 @@ python3 demo/smoke.py
 - **内置协议转换层**：考试端点仅 OpenAI 协议，项目内置 LiteLLM 做 Anthropic↔OpenAI 翻译；这会带来少量额外延迟，且转换层对少数边缘字段可能不完全保真。
 - **每轮新起进程**：单轮开销略高，换取更好的隔离与崩溃恢复。
 - **并发/超时**为工程兜底，非严格配额控制。
-- **HITL 仅覆盖文件工具**：通过 Bash 间接修改文件不在拦截范围；如需可扩展钩子匹配。
+- **Bash 写操作拦截是启发式的**：通过重定向、常见写命令、运行脚本等特征识别，不保证覆盖所有间接写法（如脚本内部写文件）；只读命令会被放行以减少打扰。
 - **「本次会话都允许」是进程内状态**：后端重启后失效，需重新确认。
 
 ## 安全

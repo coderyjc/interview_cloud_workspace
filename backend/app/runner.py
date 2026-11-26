@@ -28,7 +28,7 @@ _HOOK_SETTINGS = {
     "hooks": {
         "PreToolUse": [
             {
-                "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+                "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
                 "hooks": [
                     {"type": "command", "command": _HOOK_CMD, "timeout": 1800}
                 ],

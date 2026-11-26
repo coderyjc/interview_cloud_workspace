@@ -468,6 +468,13 @@ def _apply_edit(old: str, old_s: str, new_s: str, replace_all: bool) -> str:
 
 
 def _compute_change(tool_name: str, tool_input: dict, cwd: str) -> dict:
+    if tool_name == "Bash":
+        cmd = tool_input.get("command", "")
+        return {
+            "file_path": "Bash 命令",
+            "diff": "$ " + cmd,
+            "added": 0, "removed": 0, "raw": True,
+        }
     fp = (
         tool_input.get("file_path")
         or tool_input.get("notebook_path")

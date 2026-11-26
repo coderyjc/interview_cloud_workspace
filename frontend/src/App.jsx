@@ -153,6 +153,7 @@ function DiffView({ diff }) {
         else if (line.startsWith('@@')) cls += ' d-hunk'
         else if (line.startsWith('+')) cls += ' d-add'
         else if (line.startsWith('-')) cls += ' d-del'
+        else if (line.startsWith('$ ')) cls += ' d-cmd'
         return (
           <div key={i} className={cls}>
             {line || ' '}
@@ -168,7 +169,11 @@ function PermissionModal({ req, onDecide }) {
     <div className="modal-overlay">
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <span className="modal-title">需要确认：{req.tool_name} 修改文件</span>
+          <span className="modal-title">
+            {req.tool_name === 'Bash'
+              ? '需要确认：执行命令'
+              : `需要确认：${req.tool_name} 修改文件`}
+          </span>
           <span className="modal-meta">
             {req.file_path}
             {req.added || req.removed ? ` · +${req.added} / -${req.removed}` : ''}
