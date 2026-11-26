@@ -1,0 +1,25 @@
+services:
+  workbench:
+    build: .
+    image: cloud-agent-workbench
+    ports:
+      - "8000:8000"
+    environment:
+      - DATA_DIR=/data
+      # Compose auto-loads a `.env` file in this directory for interpolation,
+      # or you can export these in your shell before `docker compose up`.
+      - EXAM_BASE_URL=${EXAM_BASE_URL:-}
+      - EXAM_API_KEY=${EXAM_API_KEY:-}
+      - EXAM_MODEL=${EXAM_MODEL:-linext-5.3-luna}
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-workbench}
+      - MAX_CONCURRENT_RUNS=${MAX_CONCURRENT_RUNS:-4}
+      - RUN_TIMEOUT_SECONDS=${RUN_TIMEOUT_SECONDS:-1800}
+    volumes:
+      # Named volume so the data dir is owned by the non-root app user (uid 1000).
+      # Prefer a bind mount? Use e.g. `- ./data:/data` and make sure ./data is
+      # writable by uid 1000 on the host.
+      - workbench-data:/data
+    restart: unless-stopped
+
+volumes:
+  workbench-data:

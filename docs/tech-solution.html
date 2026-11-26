@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>云端 Agent 助手工作台 · 技术方案</title>
+<style>
+  :root{
+    --bg:#f7f8fb; --card:#ffffff; --ink:#1b2030; --muted:#5d6679; --line:#e3e7ef;
+    --accent:#3f6bf0; --accent-soft:#eaf0ff; --green:#1f9d63; --green-soft:#e7f7ef;
+    --amber:#b7791f; --amber-soft:#fdf3e2; --red:#d64545; --red-soft:#fdecec;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+    line-height:1.7; font-size:15px;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:40px 24px 80px}
+  header.hero{
+    background:linear-gradient(135deg,#3f6bf0,#6a4bf0); color:#fff;
+    border-radius:18px; padding:34px 36px; margin-bottom:28px;
+    box-shadow:0 18px 40px -18px rgba(63,107,240,.55);
+  }
+  header.hero h1{margin:0 0 8px; font-size:27px; letter-spacing:.3px}
+  header.hero p{margin:0; opacity:.92; font-size:14.5px}
+  header.hero .tags{margin-top:16px; display:flex; flex-wrap:wrap; gap:8px}
+  header.hero .tags span{
+    background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.28);
+    padding:3px 11px; border-radius:999px; font-size:12.5px;
+  }
+  section{
+    background:var(--card); border:1px solid var(--line); border-radius:16px;
+    padding:26px 30px; margin-bottom:22px;
+  }
+  h2{
+    font-size:19px; margin:0 0 6px; display:flex; align-items:center; gap:10px;
+  }
+  h2 .num{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:28px; height:28px; border-radius:9px; background:var(--accent-soft);
+    color:var(--accent); font-size:14px; font-weight:700;
+  }
+  h3{font-size:15px; margin:22px 0 8px; color:var(--ink)}
+  p{margin:8px 0; color:#2a3143}
+  .lead{color:var(--muted)}
+  ul{margin:8px 0; padding-left:22px}
+  li{margin:5px 0}
+  code{
+    background:#f0f2f8; border:1px solid var(--line); border-radius:6px;
+    padding:1px 6px; font-family:ui-monospace,Consolas,monospace; font-size:12.8px;
+    color:#3a4152;
+  }
+  pre{
+    background:#12161f; color:#dfe4ee; border-radius:12px; padding:16px 18px;
+    overflow:auto; font-size:12.8px; line-height:1.6;
+    font-family:ui-monospace,Consolas,monospace;
+  }
+  pre .cmt{color:#7d8aa5}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  .card{
+    border:1px solid var(--line); border-radius:12px; padding:16px 18px; background:#fbfcfe;
+  }
+  .card h4{margin:0 0 6px; font-size:14px}
+  .card p{margin:4px 0; font-size:13.5px; color:var(--muted)}
+  .pill{display:inline-block; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:600}
+  .pill.b{background:var(--accent-soft); color:var(--accent)}
+  .pill.g{background:var(--green-soft); color:var(--green)}
+  .pill.a{background:var(--amber-soft); color:var(--amber)}
+  .pill.r{background:var(--red-soft); color:var(--red)}
+  .diagram{
+    background:#fbfcfe; border:1px solid var(--line); border-radius:14px;
+    padding:10px; margin:16px 0; overflow-x:auto;
+  }
+  .diagram svg{display:block; width:100%; height:auto; min-width:720px}
+  .caption{text-align:center; color:var(--muted); font-size:12.5px; margin-top:6px}
+  table{width:100%; border-collapse:collapse; margin:12px 0; font-size:13.6px}
+  th,td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--line)}
+  th{color:var(--muted); font-weight:600; background:#fafbfd}
+  td code{font-size:12.3px}
+  .note{
+    border-left:4px solid var(--accent); background:var(--accent-soft);
+    padding:10px 16px; border-radius:0 10px 10px 0; font-size:13.5px; margin:14px 0;
+  }
+  .note.warn{border-color:var(--amber); background:var(--amber-soft)}
+  footer{color:var(--muted); text-align:center; font-size:12.5px; margin-top:30px}
+  /* SVG text defaults */
+  .bx{fill:#ffffff; stroke:#cdd5e6; stroke-width:1.4; rx:12}
+  .bx-accent{fill:#eef2ff; stroke:#9fb2f5; stroke-width:1.4}
+  .bx-green{fill:#eafaf1; stroke:#9fdcc0; stroke-width:1.4}
+  .bx-amber{fill:#fdf5e6; stroke:#e6c98a; stroke-width:1.4}
+  .box-label{font-size:14px; font-weight:700; fill:#1b2030}
+  .box-sub{font-size:11.5px; fill:#5d6679}
+  .zone{fill:#f4f6fc; stroke:#b8c4e8; stroke-width:1.6; stroke-dasharray:7 6}
+  .zone-label{font-size:13px; font-weight:700; fill:#3f6bf0}
+  .arrow{stroke:#7b88a8; stroke-width:1.6; fill:none}
+  .arrow-accent{stroke:#3f6bf0; stroke-width:1.8; fill:none}
+  .flow-label{font-size:11.5px; fill:#5d6679}
+  .lifeline{stroke:#c4cbdc; stroke-width:1.4; stroke-dasharray:5 5}
+  .actor{fill:#eef2ff; stroke:#9fb2f5; stroke-width:1.3}
+  .actor-label{font-size:12.5px; font-weight:700; fill:#1b2030}
+  .msg{stroke:#5f6c8c; stroke-width:1.5; fill:none}
+  .msg-ret{stroke:#9aa6c0; stroke-width:1.3; fill:none; stroke-dasharray:5 4}
+  .msg-label{font-size:11px; fill:#3a4152}
+  .msg-label-mut{font-size:10.5px; fill:#7d879e}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <h1>云端 Agent 助手工作台 · 技术方案</h1>
+    <p>把真实的 Claude Code CLI 搬进浏览器：多会话、流式进展、文件产出、关页可续聊。</p>
+    <div class="tags">
+      <span>React + Vite</span><span>FastAPI</span><span>Claude Code (headless)</span>
+      <span>LiteLLM 协议转换</span><span>SQLite</span><span>Docker</span>
+    </div>
+  </header>
+
+  <section>
+    <h2><span class="num">1</span>设计目标与核心取舍</h2>
+    <p class="lead">围绕「真实 Agent CLI + 浏览器多会话工作台」这个闭环，做了几个关键取舍：</p>
+    <div class="grid2">
+      <div class="card">
+        <h4>进程模型：每条消息起一个 CLI 进程</h4>
+        <p>不用长驻 SDK 会话，而是每次用户消息 <code>spawn</code> 一个 <code>claude -p</code> 单轮进程，随后用 <code>--resume</code> 续接。崩溃只影响单轮，并发天然成立，重启不残留。</p>
+      </div>
+      <div class="card">
+        <h4>数据职责分离</h4>
+        <p>SQLite 是前端 transcript 的唯一真源（带单调 seq）；Claude 自己的会话存储只负责模型侧上下文，用于 <code>--resume</code>。二者解耦。</p>
+      </div>
+      <div class="card">
+        <h4>协议适配层</h4>
+        <p>考试端点只说 OpenAI 协议，Claude Code 只说 Anthropic 协议。容器内起 LiteLLM 做双向翻译（含工具调用与流式）。</p>
+      </div>
+      <div class="card">
+        <h4>全自动执行</h4>
+        <p>单用户本地场景，用 <code>--dangerously-skip-permissions</code> 让助手自由读写工作目录、跑命令。任务可取消、超时兜底。</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">2</span>总体架构</h2>
+    <p class="lead">全部组件运行在同一个 Docker 容器内；容器内同时部署了我们的 FastAPI 服务、真实的 <code>claude</code> CLI 和协议转换代理。</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 1040 600" role="img" aria-label="总体架构图">
+        <defs>
+          <marker id="arw" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#7b88a8"/>
+          </marker>
+          <marker id="arwA" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#3f6bf0"/>
+          </marker>
+          <marker id="arwG" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#1f9d63"/>
+          </marker>
+        </defs>
+
+        <!-- Browser -->
+        <rect class="bx bx-accent" x="20" y="86" width="172" height="88" rx="12"/>
+        <text class="box-label" x="106" y="120" text-anchor="middle">浏览器</text>
+        <text class="box-sub" x="106" y="142" text-anchor="middle">React SPA</text>
+        <text class="box-sub" x="106" y="159" text-anchor="middle">会话 / 聊天 / 文件</text>
+
+        <!-- Docker zone -->
+        <rect class="zone" x="240" y="36" width="472" height="540" rx="18"/>
+        <text class="zone-label" x="262" y="62">Docker 容器</text>
+
+        <!-- FastAPI -->
+        <rect class="bx bx-accent" x="276" y="86" width="352" height="82" rx="12"/>
+        <text class="box-label" x="452" y="118" text-anchor="middle">FastAPI 后端（我们的程序）</text>
+        <text class="box-sub" x="452" y="139" text-anchor="middle">REST + WebSocket · 进程编排</text>
+        <text class="box-sub" x="452" y="156" text-anchor="middle">SQLite 落库 · 流式广播</text>
+
+        <!-- Claude Code CLI -->
+        <rect class="bx bx-green" x="276" y="212" width="352" height="82" rx="12"/>
+        <text class="box-label" x="452" y="244" text-anchor="middle">真实 Claude Code CLI</text>
+        <text class="box-sub" x="452" y="265" text-anchor="middle">claude -p · stream-json</text>
+        <text class="box-sub" x="452" y="282" text-anchor="middle">读写工作目录 · 执行命令</text>
+
+        <!-- LiteLLM -->
+        <rect class="bx bx-amber" x="276" y="338" width="352" height="78" rx="12"/>
+        <text class="box-label" x="452" y="369" text-anchor="middle">LiteLLM 代理 :4000</text>
+        <text class="box-sub" x="452" y="390" text-anchor="middle">Anthropic ⇄ OpenAI 协议转换</text>
+
+        <!-- Data -->
+        <rect class="bx" x="276" y="452" width="352" height="100" rx="12"/>
+        <text class="box-label" x="452" y="478" text-anchor="middle">数据卷 /data</text>
+        <text class="box-sub" x="452" y="499" text-anchor="middle">app.db（会话 / 消息 · seq）</text>
+        <text class="box-sub" x="452" y="516" text-anchor="middle">workspaces/&lt;sid&gt;/（上传 + 产出文件）</text>
+        <text class="box-sub" x="452" y="533" text-anchor="middle">claude/（CLAUDE_CONFIG_DIR，供 --resume）</text>
+
+        <!-- Exam API -->
+        <rect class="bx" x="796" y="338" width="224" height="78" rx="12" stroke="#b8c4e8"/>
+        <text class="box-label" x="908" y="369" text-anchor="middle">考试平台端点</text>
+        <text class="box-sub" x="908" y="390" text-anchor="middle">OpenAI 兼容 · linext-5.3-luna</text>
+
+        <!-- Arrows -->
+        <line class="arrow-accent" x1="192" y1="130" x2="272" y2="130" marker-end="url(#arwA)"/>
+        <text class="flow-label" x="232" y="120" text-anchor="middle">REST</text>
+        <line class="arrow-accent" x1="272" y1="150" x2="192" y2="150" marker-end="url(#arwA)"/>
+        <text class="flow-label" x="232" y="166" text-anchor="middle">WS 流式</text>
+
+        <line class="arrow" x1="452" y1="168" x2="452" y2="208" marker-end="url(#arw)"/>
+        <text class="flow-label" x="466" y="192">spawn(claude -p) · 每轮一次</text>
+
+        <line class="arrow" x1="452" y1="294" x2="452" y2="334" marker-end="url(#arw)"/>
+        <text class="flow-label" x="466" y="318">Anthropic /v1/messages</text>
+
+        <line class="arrow-accent" x1="628" y1="377" x2="792" y2="377" marker-end="url(#arwA)"/>
+        <text class="flow-label" x="710" y="367" text-anchor="middle">OpenAI /chat/completions</text>
+
+        <!-- persistence connector -->
+        <path class="arrow" d="M628,130 L676,130 L676,502 L632,502" marker-end="url(#arw)"/>
+        <text class="flow-label" x="684" y="316" transform="rotate(90 684 316)">transcript / 文件 / 会话</text>
+      </svg>
+      <div class="caption">图 1 · 组件拓扑：浏览器 ↔ 容器内 FastAPI ↔ 真实 CLI ↔ 协议代理 ↔ 考试端点</div>
+    </div>
+
+    <div class="note">
+      <strong>「调用 Docker 中的 Claude Code」=</strong> 容器内的 FastAPI 进程（我们的程序）用
+      <code>asyncio.create_subprocess_exec</code> 启动同容器内的真实 <code>claude</code> 进程。
+      CLI 是官方 npm 包 <code>@anthropic-ai/claude-code</code>，不是 SDK、也不是 mock。
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">3</span>单轮执行时序</h2>
+    <p class="lead">一条用户消息从输入到流式回显、工具执行、结果落库的完整链路。</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 1020 560" role="img" aria-label="单轮执行时序图">
+        <defs>
+          <marker id="sa" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 Z" fill="#5f6c8c"/>
+          </marker>
+          <marker id="sr" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto">
+            <path d="M0,0 L7,3.5 L0,7 Z" fill="#9aa6c0"/>
+          </marker>
+        </defs>
+
+        <!-- actors -->
+        <g>
+          <rect class="actor" x="20"  y="14" width="112" height="34" rx="9"/><text class="actor-label" x="76"  y="36" text-anchor="middle">用户</text>
+          <rect class="actor" x="196" y="14" width="112" height="34" rx="9"/><text class="actor-label" x="252" y="36" text-anchor="middle">浏览器</text>
+          <rect class="actor" x="372" y="14" width="112" height="34" rx="9"/><text class="actor-label" x="428" y="36" text-anchor="middle">FastAPI</text>
+          <rect class="actor" x="548" y="14" width="140" height="34" rx="9"/><text class="actor-label" x="618" y="36" text-anchor="middle">Claude Code CLI</text>
+          <rect class="actor" x="752" y="14" width="112" height="34" rx="9"/><text class="actor-label" x="808" y="36" text-anchor="middle">LiteLLM</text>
+          <rect class="actor" x="900" y="14" width="104" height="34" rx="9"/><text class="actor-label" x="952" y="36" text-anchor="middle">考试端点</text>
+        </g>
+        <!-- lifelines -->
+        <line class="lifeline" x1="76"  y1="48" x2="76"  y2="540"/>
+        <line class="lifeline" x1="252" y1="48" x2="252" y2="540"/>
+        <line class="lifeline" x1="428" y1="48" x2="428" y2="540"/>
+        <line class="lifeline" x1="618" y1="48" x2="618" y2="540"/>
+        <line class="lifeline" x1="808" y1="48" x2="808" y2="540"/>
+        <line class="lifeline" x1="952" y1="48" x2="952" y2="540"/>
+
+        <!-- messages -->
+        <line class="msg" x1="76"  y1="86"  x2="252" y2="86"  marker-end="url(#sa)"/>
+        <text class="msg-label" x="164" y="80" text-anchor="middle">① 输入任务</text>
+
+        <line class="msg" x1="252" y1="120" x2="428" y2="120" marker-end="url(#sa)"/>
+        <text class="msg-label" x="340" y="114" text-anchor="middle">② POST /messages</text>
+
+        <rect x="392" y="136" width="72" height="30" rx="6" fill="#eef2ff" stroke="#9fb2f5"/>
+        <text class="msg-label-mut" x="428" y="155" text-anchor="middle">写库+广播</text>
+
+        <line class="msg" x1="428" y1="196" x2="618" y2="196" marker-end="url(#sa)"/>
+        <text class="msg-label" x="523" y="190" text-anchor="middle">③ spawn claude -p（首轮 --session-id / 续聊 --resume）</text>
+
+        <line class="msg" x1="618" y1="234" x2="808" y2="234" marker-end="url(#sa)"/>
+        <text class="msg-label" x="713" y="228" text-anchor="middle">④ /v1/messages（含工具定义）</text>
+
+        <line class="msg" x1="808" y1="272" x2="952" y2="272" marker-end="url(#sa)"/>
+        <text class="msg-label" x="880" y="266" text-anchor="middle">⑤ /chat/completions</text>
+
+        <line class="msg-ret" x1="952" y1="308" x2="808" y2="308" marker-end="url(#sr)"/>
+        <text class="msg-label-mut" x="880" y="302" text-anchor="middle">OpenAI 响应</text>
+
+        <line class="msg-ret" x1="808" y1="340" x2="618" y2="340" marker-end="url(#sr)"/>
+        <text class="msg-label-mut" x="713" y="334" text-anchor="middle">Anthropic 响应（文本 / tool_use）</text>
+
+        <line class="msg-ret" x1="618" y1="388" x2="428" y2="388" marker-end="url(#sr)"/>
+        <text class="msg-label" x="523" y="382" text-anchor="middle">⑥ stream-json 逐行：delta / assistant / tool / result</text>
+
+        <line class="msg-ret" x1="428" y1="426" x2="252" y2="426" marker-end="url(#sr)"/>
+        <text class="msg-label" x="340" y="420" text-anchor="middle">⑦ WS 推送（seq 单调）</text>
+
+        <line class="msg-ret" x1="252" y1="462" x2="76" y2="462" marker-end="url(#sr)"/>
+        <text class="msg-label" x="164" y="456" text-anchor="middle">⑧ 实时进展 / 产出</text>
+
+        <!-- tool loop note -->
+        <rect x="452" y="486" width="360" height="42" rx="9" fill="#eafaf1" stroke="#9fdcc0"/>
+        <text class="msg-label" x="632" y="504" text-anchor="middle">工具调用时：CLI 执行 Bash/Write 等 → 结果回灌 → 继续循环</text>
+        <text class="msg-label-mut" x="632" y="520" text-anchor="middle">直到 result 事件 → FastAPI 置 idle 并广播</text>
+      </svg>
+      <div class="caption">图 2 · 单轮时序：请求下发、协议翻译、CLI 工具循环、流式回传与落库</div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">4</span>关键机制</h2>
+
+    <h3>流式、断线重连与取消</h3>
+    <ul>
+      <li>每个会话一条 WebSocket。CLI 的 <code>stream-json</code> 被解析为归一化事件：<code>delta</code>（文本分片）、<code>tool</code>/<code>tool_update</code>（工具状态）、<code>result</code>、<code>error</code>。</li>
+      <li>事件先落库（带 <code>seq</code>）再广播；客户端连上后发 <code>subscribe{after_seq}</code>，服务端回放缺口并继续推实时事件，并用 <code>seq</code> 去重。</li>
+      <li>取消：后端向 CLI 进程发 <code>SIGTERM</code>，避免僵死；全局并加上限与单轮超时兜底。</li>
+    </ul>
+
+    <h3>多会话与持久化</h3>
+    <ul>
+      <li>每个会话独立工作目录 <code>workspaces/&lt;sid&gt;/</code>，上传材料与助手产出同目录，文件面板直接读该目录。</li>
+      <li>会话元数据与消息在 <code>app.db</code>；关页、重启容器后历史仍在，继续发消息以 <code>--resume</code> 续接上下文。</li>
+    </ul>
+
+    <h3>协议适配（为什么需要 LiteLLM）</h3>
+    <div class="note warn">
+      实测考试端点仅支持 OpenAI 协议：<code>POST …/v1/chat/completions</code> 返回 200，而 Anthropic 的 <code>POST …/v1/messages</code> 返回 404「此接口未开放」。
+      因此容器启动时用 <code>EXAM_*</code> 生成 LiteLLM 配置，把 Claude Code 的 Anthropic 请求（含 <code>tool_use</code> 与 SSE 流）翻译为 OpenAI 协议。
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">5</span>接口与数据模型</h2>
+    <table>
+      <thead><tr><th>类型</th><th>路径</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>REST</td><td><code>POST/GET /api/sessions</code></td><td>新建 / 列出会话</td></tr>
+        <tr><td>REST</td><td><code>GET/DELETE /api/sessions/{id}</code></td><td>详情（含消息）/ 删除</td></tr>
+        <tr><td>REST</td><td><code>POST /api/sessions/{id}/messages</code></td><td>发送消息并触发一轮任务</td></tr>
+        <tr><td>REST</td><td><code>POST /api/sessions/{id}/cancel</code></td><td>取消当前任务</td></tr>
+        <tr><td>REST</td><td><code>GET/POST /api/sessions/{id}/files</code></td><td>列出 / 上传文件</td></tr>
+        <tr><td>REST</td><td><code>GET …/files/download?path=</code></td><td>下载（含路径穿越校验）</td></tr>
+        <tr><td>WS</td><td><code>/ws/{id}</code></td><td>订阅事件；<code>subscribe</code> / <code>cancel</code></td></tr>
+      </tbody>
+    </table>
+    <table>
+      <thead><tr><th>表</th><th>关键字段</th></tr></thead>
+      <tbody>
+        <tr><td><code>sessions</code></td><td>id(UUID) · title · kind(dev/daily) · status · claude_started · 时间戳</td></tr>
+        <tr><td><code>messages</code></td><td>session_id · seq(单调) · role · type(text/tool) · tool_uid · payload(JSON)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2><span class="num">6</span>部署与运行</h2>
+    <pre>docker compose up --build
+<span class="cmt"># 浏览器打开 http://localhost:8000</span>
+
+<span class="cmt"># 容器内启动顺序（entrypoint）：</span>
+<span class="cmt">#   1) 由 EXAM_* 生成 LiteLLM 配置并启动 :4000</span>
+<span class="cmt">#   2) 将 ANTHROPIC_BASE_URL 指向本地代理</span>
+<span class="cmt">#   3) 启动 FastAPI :8000（前端静态资源同源托管）</span></pre>
+    <ul>
+      <li>以非 root 的 <code>node</code> 用户运行（<code>--dangerously-skip-permissions</code> 拒绝 root）。</li>
+      <li>凭据只经环境变量注入，<code>.env</code> 不入库；<code>docker-compose.yml</code> 通过变量插值读取。</li>
+      <li>数据放在命名卷，会话/文件/CLI 会话存储在重启后保留。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="num">7</span>已知限制</h2>
+    <ul>
+      <li>单用户、无鉴权，仅建议本地或受信网络使用。</li>
+      <li>全自动执行有安全风险（助手可读写工作目录、执行命令）。</li>
+      <li>协议转换层会引入少量延迟，少数边缘字段可能不完全保真。</li>
+      <li>续聊依赖 Claude 会话存储；若清除，历史仍在但上下文会断。</li>
+    </ul>
+  </section>
+
+  <footer>云端 Agent 助手工作台 · 技术方案 · 与仓库源码同步</footer>
+</div>
+</body>
+</html>
