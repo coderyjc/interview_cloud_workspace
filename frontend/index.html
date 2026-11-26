@@ -11,6 +11,8 @@
         --ok: #35c46b; --err: #ff6b6b; --warn: #f0b34a;
         --badge-bg: #2b3140; --tool-name: #c9d4ff; --link: #a9c0ff; --label: #6e768a;
         --scroll-thumb: #3a4353; --scroll-thumb-hover: #4f5a70; --scroll-track: transparent;
+        --syn-keyword: #c792ea; --syn-string: #a5e075; --syn-number: #f78c6c;
+        --syn-title: #82aaff; --syn-attr: #ffcb6b; --syn-meta: #89ddff;
       }
       :root[data-theme="light"] {
         --bg: #f5f7fb; --panel: #ffffff; --panel-2: #eef2f8; --line: #dde3ee;
@@ -18,6 +20,8 @@
         --ok: #1f9d63; --err: #d64545; --warn: #b7791f;
         --badge-bg: #e6ebf6; --tool-name: #2f4fae; --link: #2f5bd6; --label: #8a93a7;
         --scroll-thumb: #c6cede; --scroll-thumb-hover: #aab4c9; --scroll-track: transparent;
+        --syn-keyword: #a626a4; --syn-string: #50a14f; --syn-number: #986801;
+        --syn-title: #4078f2; --syn-attr: #c18401; --syn-meta: #0184bc;
       }
       * { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) var(--scroll-track); }
       *::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -125,10 +129,54 @@
       .filelist { flex: 1; overflow-y: auto; padding: 4px 8px 12px; }
       .file { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 6px; font-size: 12px; }
       .file:hover { background: var(--panel-2); }
-      .file a { color: var(--link); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .file a:hover { text-decoration: underline; }
-      .file .size { margin-left: auto; color: var(--muted); font-size: 10.5px; }
+      .file-name {
+        flex: 1; min-width: 0; background: none; border: none; padding: 0;
+        font: inherit; text-align: left; color: var(--link); cursor: pointer;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .file-name:hover { text-decoration: underline; }
+      .file .size { color: var(--muted); font-size: 10.5px; }
+      .file .file-dl { color: var(--muted); text-decoration: none; font-size: 12px; }
+      .file .file-dl:hover { color: var(--accent); }
       .no-files { color: var(--muted); font-size: 12px; padding: 14px; text-align: center; }
+
+      /* file preview modal */
+      .modal-overlay {
+        position: fixed; inset: 0; z-index: 50; padding: 24px;
+        background: rgba(6, 8, 14, .55); backdrop-filter: blur(2px);
+        display: flex; align-items: center; justify-content: center;
+      }
+      .modal {
+        width: min(920px, 100%); height: min(80vh, 760px);
+        background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+        display: flex; flex-direction: column; overflow: hidden;
+        box-shadow: 0 30px 80px -24px rgba(0, 0, 0, .55);
+      }
+      .modal-head {
+        display: flex; align-items: center; gap: 10px;
+        padding: 11px 16px; border-bottom: 1px solid var(--line);
+      }
+      .modal-title { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .modal-meta { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; }
+      .modal-head .btn { text-decoration: none; }
+      .modal-body { flex: 1; overflow: auto; background: var(--bg); }
+      pre.code {
+        margin: 0; padding: 16px 18px; font-family: ui-monospace, Consolas, monospace;
+        font-size: 12.5px; line-height: 1.6; white-space: pre; tab-size: 4;
+      }
+      pre.code code { font-family: inherit; }
+
+      /* highlight.js tokens (theme-aware) */
+      .hljs { color: var(--text); background: transparent; }
+      .hljs-comment, .hljs-quote { color: var(--muted); font-style: italic; }
+      .hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-type, .hljs-literal { color: var(--syn-keyword); }
+      .hljs-string, .hljs-attr, .hljs-template-variable, .hljs-regexp { color: var(--syn-string); }
+      .hljs-number, .hljs-boolean, .hljs-symbol { color: var(--syn-number); }
+      .hljs-title, .hljs-title.function_, .hljs-section, .hljs-name { color: var(--syn-title); }
+      .hljs-variable, .hljs-attribute, .hljs-tag, .hljs-selector-attr { color: var(--syn-attr); }
+      .hljs-meta, .hljs-selector-id, .hljs-selector-class, .hljs-doctag { color: var(--syn-meta); }
+      .hljs-emphasis { font-style: italic; }
+      .hljs-strong { font-weight: 700; }
     </style>
     <script>
       // Apply saved theme before first paint to avoid a flash.

@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import hljs from 'highlight.js/lib/common'
 
 // ---------------------------------------------------------------- api helpers
 const api = {
@@ -54,6 +55,65 @@ function fmtInput(input) {
   }
 }
 
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ))
+}
+
+function highlightCode(code, lang) {
+  try {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
+    }
+    return hljs.highlightAuto(code).value
+  } catch {
+    return escapeHtml(code)
+  }
+}
+
+// ---------------------------------------------------------------- preview modal
+function PreviewModal({ data, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const html = useMemo(
+    () => (data.binary ? '' : highlightCode(data.content || '', data.language)),
+    [data]
+  )
+  const dl = `/api/sessions/${data.sid}/files/download?path=${encodeURIComponent(data.path)}`
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <span className="modal-title" title={data.path}>{data.path}</span>
+          <span className="modal-meta">
+            {fmtSize(data.size)}
+            {data.truncated ? ' · 已截断（仅显示前 200KB）' : ''}
+          </span>
+          <a className="btn" href={dl}>下载</a>
+          <button className="btn" onClick={onClose}>关闭</button>
+        </div>
+        <div className="modal-body">
+          {data.binary ? (
+            <div className="no-files">二进制文件，无法预览。请下载后查看。</div>
+          ) : (
+            <pre className="code">
+              <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
+            </pre>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------- tool card
 function ToolCard({ tool }) {
   const [open, setOpen] = useState(false)
@@ -99,6 +159,7 @@ export default function App() {
       return 'dark'
     }
   })
+  const [preview, setPreview] = useState(null)
 
   const wsRef = useRef(null)
   const activeRef = useRef(null)
@@ -116,6 +177,21 @@ export default function App() {
       setFiles(await api.files(id))
     } catch {}
   }, [])
+
+  const openPreview = async (path) => {
+    if (!active) return
+    setError('')
+    try {
+      const r = await fetch(
+        `/api/sessions/${active}/files/content?path=${encodeURIComponent(path)}`
+      )
+      if (!r.ok) throw new Error('failed')
+      const d = await r.json()
+      setPreview({ ...d, sid: active })
+    } catch {
+      setError('无法加载文件预览')
+    }
+  }
 
   // Theme: persist the choice and reflect it on <html data-theme>.
   useEffect(() => {
@@ -405,17 +481,27 @@ export default function App() {
           {active && files.length === 0 && <div className="no-files">暂无文件</div>}
           {files.map((f) => (
             <div className="file" key={f.path}>
-              <a
-                href={`/api/sessions/${active}/files/download?path=${encodeURIComponent(f.path)}`}
-                title={f.path}
+              <button
+                className="file-name"
+                title={`预览 ${f.path}`}
+                onClick={() => openPreview(f.path)}
               >
                 {f.path}
-              </a>
+              </button>
               <span className="size">{fmtSize(f.size)}</span>
+              <a
+                className="file-dl"
+                href={`/api/sessions/${active}/files/download?path=${encodeURIComponent(f.path)}`}
+                title="下载"
+              >
+                ↓
+              </a>
             </div>
           ))}
         </div>
       </aside>
+
+      {preview && <PreviewModal data={preview} onClose={() => setPreview(null)} />}
     </div>
   )
 }

@@ -467,6 +467,45 @@ async def upload_file(sid: str, file: UploadFile = File(...)):
     return {"path": name, "name": name, "size": len(data)}
 
 
+_EXT_LANG = {
+    ".py": "python", ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript",
+    ".ts": "typescript", ".tsx": "typescript", ".json": "json", ".md": "markdown",
+    ".html": "xml", ".htm": "xml", ".xml": "xml", ".css": "css", ".scss": "scss",
+    ".sh": "bash", ".bash": "bash", ".yml": "yaml", ".yaml": "yaml",
+    ".sql": "sql", ".go": "go", ".rs": "rust", ".java": "java", ".c": "c",
+    ".h": "c", ".cpp": "cpp", ".cc": "cpp", ".rb": "ruby", ".php": "php",
+    ".toml": "ini", ".ini": "ini", ".csv": "", ".txt": "",
+}
+
+
+def _lang_for(path: str) -> str:
+    return _EXT_LANG.get(Path(path).suffix.lower(), "")
+
+
+@app.get("/api/sessions/{sid}/files/content")
+def file_content(sid: str, path: str = Query(...), max_bytes: int = Query(200000)):
+    base = (WORKSPACES / sid).resolve()
+    target = (base / path).resolve()
+    if target != base and base not in target.parents:
+        raise HTTPException(403, "path not allowed")
+    if not target.is_file():
+        raise HTTPException(404, "file not found")
+    size = target.stat().st_size
+    with open(target, "rb") as f:
+        raw = f.read(max_bytes + 1)
+    truncated = len(raw) > max_bytes
+    raw = raw[:max_bytes]
+    binary = b"\x00" in raw
+    return {
+        "path": path,
+        "size": size,
+        "binary": binary,
+        "truncated": truncated,
+        "language": _lang_for(path),
+        "content": "" if binary else raw.decode("utf-8", "replace"),
+    }
+
+
 @app.get("/api/sessions/{sid}/files/download")
 def download_file(sid: str, path: str = Query(...)):
     base = (WORKSPACES / sid).resolve()
