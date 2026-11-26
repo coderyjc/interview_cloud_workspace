@@ -11,12 +11,14 @@
 - **多会话**：会话列表可新建/切换/删除；不同会话彼此隔离（各自独立工作目录 + 独立 CLI 会话上下文）。
 - **持久化与续聊**：会话、消息、文件都落盘；重启后历史仍在，继续发消息会以 `--resume` 续接同一 CLI 会话。
 - **文件工作区**：上传材料、浏览/下载助手产出（面板中的文件直接来自该会话工作目录）。
+- **文件预览**：点击工作区文件在模态框中预览，按扩展名做语法高亮（未识别时自动检测）；二进制文件提示下载，超大文件截断。
+- **主题**：支持日间 / 夜间切换（记忆选择），滚动条随主题着色。
 - **异常处理**：任务可取消、超时可兜底、CLI 报错会在界面提示、断线自动重连并补齐消息。
 - **人工确认（HITL）**：助手修改文件（`Write/Edit/MultiEdit/NotebookEdit`）或执行**写操作类 Bash 命令**前会暂停，在浏览器弹窗展示 diff/命令，由你「允许 / 拒绝 / 本次会话都允许」。
 
 ## 技术方案（图文）
 
-架构图（SVG）+ 时序图 + 设计说明见 **[`docs/tech-solution.html`](docs/tech-solution.html)** —— 单文件，浏览器直接打开。
+架构图（SVG）+ 时序图 + 设计说明见 **[`README-Solution.html`](README-Solution.html)** —— 单文件，浏览器直接打开。
 
 ## 架构
 
@@ -45,18 +47,23 @@ LiteLLM 代理 (容器内 127.0.0.1:4000，Anthropic ↔ OpenAI 协议转换)
 
 **数据职责**：SQLite 是前端 transcript 的唯一真源（带单调 `seq`，供断线补齐）；Claude 自己的会话存储（挂在数据卷）只负责模型侧上下文，用于 `--resume`。两者解耦——即便 CLI 存储丢失，聊天历史依旧在，只是续聊上下文会断。
 
+**人工确认**：文件工具与 Bash 写操作在执行前经 `PreToolUse` 钩子暂停，由用户在浏览器审批后放行（详见下方「人工确认」章节）。
+
 ## 目录结构
 
 ```
-backend/app/main.py      FastAPI：会话/文件 REST + WebSocket + 静态托管 + SQLite
-backend/app/runner.py    启动 claude 子进程并解析 stream-json 为归一化事件
-backend/entrypoint.sh    容器入口：起 LiteLLM 转换层 → 指向本地代理 → 起 FastAPI
-frontend/src/App.jsx     React 单页：三栏（会话列表 / 聊天流 / 文件面板）
-demo/smoke.py            无 UI 的端到端冒烟脚本
-demo/evidence_run.txt    一次真实运行的证据输出（由 smoke.py 生成）
-docs/tech-solution.html  技术方案（SVG 架构图 + 时序图 + 文字，单文件）
-Dockerfile               多阶段：构建前端 → runtime(node+python+claude+litellm)
-docker-compose.yml       一键启动，数据卷 + 环境变量
+backend/app/main.py         FastAPI：会话/文件 REST + WebSocket + 静态托管 + SQLite
+backend/app/runner.py       启动 claude 子进程并解析 stream-json 为归一化事件
+backend/app/approve_hook.py PreToolUse 钩子：文件修改 / Bash 写操作审批
+backend/entrypoint.sh       容器入口：起 LiteLLM 转换层 → 指向本地代理 → 起 FastAPI
+frontend/src/App.jsx        React 单页：三栏（会话列表 / 聊天流 / 文件面板）
+demo/smoke.py               无 UI 的端到端冒烟脚本
+assets/evidence_run.txt     一次真实运行的证据输出（由 smoke.py 生成）
+README-Demo.md              演示脚本（提示词 / 预期 / 截图清单与 alt）
+README-Solution.html        技术方案（SVG 架构图 + 时序图 + 文字，单文件）
+assets/                     演示素材与截图（meeting.txt / sample.csv / 截图）
+Dockerfile                  多阶段：构建前端 → runtime(node+python+claude+litellm)
+docker-compose.yml          一键启动，数据卷 + 环境变量
 ```
 
 ## 配置
@@ -111,11 +118,14 @@ cd frontend && npm install && npm run dev
 
 1. 点「＋ 新聊天」新建会话。
 2. 在输入框描述任务，回车发送。右侧实时显示助手文本与工具调用（点击工具卡片可展开输入/输出）。
-3. 助手完成后，右侧「工作区文件」列出产出，点击即可下载；也可「上传材料」供助手分析。
-4. 继续提修改意见即可续聊；切换会话或刷新/重开页面后再回来，历史与上下文都在。
-5. 任务进行中可点「取消」。
+3. 助手修改文件或执行写操作类 Bash 时会弹出**审批模态框**（展示 diff / 命令），选择「允许本次 / 拒绝 / 本次会话都允许」。
+4. 助手完成后，右侧「工作区文件」列出产出：**点击文件名**弹窗预览（语法高亮），点 `↓` 下载；也可「上传材料」供助手分析。
+5. 继续提修改意见即可续聊；切换会话或刷新/重开页面后再回来，历史与上下文都在。
+6. 任务进行中可点「取消」。
 
 ### 演示材料建议
+
+完整的可照做演示脚本（精确提示词、预期结果、截图清单与 alt 文本、录屏脚本）见根目录 **[`README-Demo.md`](README-Demo.md)**，演示素材统一存放在 **[`assets/`](assets/)**。
 
 - **代码开发**：让助手「写一个 CSV→Markdown 转换小工具并加测试，运行确认通过」。观察工具卡片、产出文件与测试输出；随后提意见（如「再加一个 `--delimiter` 参数」）验证续聊。
 - **日常任务**：上传一份会议记录/CSV，让助手「整理成结构化报告 report.md」，下载成果。
@@ -133,8 +143,9 @@ python3 demo/smoke.py
 
 ### 验证证据
 
-- `demo/evidence_run.txt`：在 Docker 容器内、经考试端点真实跑通的一次完整输出（会话 transcript + 产出文件清单）。
-- `docs/tech-solution.html`：架构与时序图，说明各组件如何协作。
+- `assets/evidence_run.txt`：在 Docker 容器内、经考试端点真实跑通的一次完整输出（会话 transcript + 产出文件清单）。
+- HITL 实测：文件 `Write` 与 Bash 写操作均被拦截，允许 / 拒绝 / 「本次会话都允许」均符合预期（详见 `README-Demo.md`）。
+- `README-Solution.html`：架构与时序图，说明各组件如何协作。
 - 容器健康：`curl http://localhost:8000/api/health` → `{"ok": true, "model": "<EXAM_MODEL>"}`。
 
 ## 人工确认（Human-in-the-loop）
@@ -164,6 +175,7 @@ python3 demo/smoke.py
 | POST | `/api/sessions/{id}/cancel` | 取消当前任务 |
 | GET/POST | `/api/sessions/{id}/files` | 列出 / 上传文件 |
 | GET | `/api/sessions/{id}/files/download?path=` | 下载文件 |
+| GET | `/api/sessions/{id}/files/content?path=` | 读取文本用于预览（二进制检测 / 截断 / 语言） |
 | WS | `/ws/{id}` | 订阅事件；发送 `{type:"subscribe",after_seq}`、`{type:"cancel"}` |
 | GET | `/api/sessions/{id}/permissions` | 当前未决的文件修改审批 |
 | POST | `/api/sessions/{id}/permissions/{req_id}` | 裁决 `{decision, allow_all}` |
@@ -172,8 +184,9 @@ python3 demo/smoke.py
 ## 已知限制
 
 - **单用户、无鉴权**：请在本地或受信网络使用，不要暴露到公网。
-- **`--dangerously-skip-permissions` 全自动执行**：助手可自由读写工作目录、执行命令，存在安全风险；仅限演示/受控环境。
+- **命令执行为全自动**：`--dangerously-skip-permissions` 下助手可自由执行命令、读写工作目录，存在安全风险；文件修改与 Bash 写操作需人工确认，但命令本身仍可能产生副作用。
 - **续聊依赖 Claude 会话存储**：已挂数据卷持久化；若被清除，历史仍在但上下文会断。
+- **文件预览仅文本**：二进制文件不可预览，超大文件截断到 200KB。
 - **内置协议转换层**：考试端点仅 OpenAI 协议，项目内置 LiteLLM 做 Anthropic↔OpenAI 翻译；这会带来少量额外延迟，且转换层对少数边缘字段可能不完全保真。
 - **每轮新起进程**：单轮开销略高，换取更好的隔离与崩溃恢复。
 - **并发/超时**为工程兜底，非严格配额控制。
@@ -184,4 +197,4 @@ python3 demo/smoke.py
 
 - 凭据仅经环境变量传入容器，`.env` 已被 `.gitignore` 排除。
 - 会话/文件操作限定在对应 `workspaces/<id>` 内（下载接口做了路径穿越校验）。
-- 前端渲染为纯文本（`white-space: pre-wrap`），不执行模型返回的 HTML。
+- 聊天内容按纯文本渲染（`white-space: pre-wrap`）；文件预览使用 `highlight.js`，代码先转义再插入，不执行文件中的 HTML / 脚本。
