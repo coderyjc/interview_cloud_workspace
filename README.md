@@ -8,10 +8,11 @@
 
 - **真实 Agent CLI**：后端为每条用户消息启动一次真实的 `claude`（Claude Code headless），支持读写文件、执行命令、跑测试。
 - **流式进展**：通过 WebSocket 实时推送助手的文本分片、工具调用（含输入/输出）、本轮结果。
-- **多会话**：会话列表可新建/切换/删除，按「开发 / 日常」分组；不同会话彼此隔离（各自独立工作目录 + 独立 CLI 会话上下文）。
+- **多会话**：会话列表可新建/切换/删除；不同会话彼此隔离（各自独立工作目录 + 独立 CLI 会话上下文）。
 - **持久化与续聊**：会话、消息、文件都落盘；重启后历史仍在，继续发消息会以 `--resume` 续接同一 CLI 会话。
 - **文件工作区**：上传材料、浏览/下载助手产出（面板中的文件直接来自该会话工作目录）。
 - **异常处理**：任务可取消、超时可兜底、CLI 报错会在界面提示、断线自动重连并补齐消息。
+- **人工确认（HITL）**：助手修改文件（`Write/Edit/MultiEdit/NotebookEdit`）前会暂停，在浏览器弹窗展示 diff，由你「允许 / 拒绝 / 本次会话都允许」。
 
 ## 技术方案（图文）
 
@@ -75,6 +76,7 @@ cp .env.example .env
 | `LITELLM_MASTER_KEY` | Claude Code ↔ 本地代理之间的内部密钥（任意值，默认 `sk-workbench`） |
 | `MAX_CONCURRENT_RUNS` | 全局并发任务上限（默认 4） |
 | `RUN_TIMEOUT_SECONDS` | 单轮任务超时秒数（默认 1800） |
+| `APPROVAL_TIMEOUT_SECONDS` | 等待人工审批的最长时间（默认 900），超时按拒绝处理 |
 
 ## 启动（Docker，推荐）
 
@@ -107,7 +109,7 @@ cd frontend && npm install && npm run dev
 
 ## 使用
 
-1. 点「+ 开发会话」或「+ 日常会话」新建会话。
+1. 点「＋ 新聊天」新建会话。
 2. 在输入框描述任务，回车发送。右侧实时显示助手文本与工具调用（点击工具卡片可展开输入/输出）。
 3. 助手完成后，右侧「工作区文件」列出产出，点击即可下载；也可「上传材料」供助手分析。
 4. 继续提修改意见即可续聊；切换会话或刷新/重开页面后再回来，历史与上下文都在。
@@ -127,7 +129,7 @@ cd frontend && npm install && npm run dev
 python3 demo/smoke.py
 ```
 
-它会自动新建开发会话与日常会话、上传样例材料、等待完成，并打印每个会话的 transcript 与产出文件，可作为可复现的运行证据。
+它会自动新建会话、上传样例材料，依次跑一个代码任务和一个材料整理任务，并打印每个会话的 transcript 与产出文件，可作为可复现的运行证据。
 
 ### 验证证据
 
@@ -135,12 +137,26 @@ python3 demo/smoke.py
 - `docs/tech-solution.html`：架构与时序图，说明各组件如何协作。
 - 容器健康：`curl http://localhost:8000/api/health` → `{"ok": true, "model": "<EXAM_MODEL>"}`。
 
+## 人工确认（Human-in-the-loop）
+
+助手在执行 **文件修改类工具**（`Write` / `Edit` / `MultiEdit` / `NotebookEdit`）之前，必须经过用户确认：
+
+1. 通过 Claude Code 的 **PreToolUse 钩子**（`backend/app/approve_hook.py`，随 `--settings` 注入）在工具执行前阻塞；
+2. 钩子把 `tool_name / tool_input / cwd` 发到后端 `/internal/approval`，后端计算**统一 diff**（当前文件内容 vs 修改后内容）；
+3. 通过 WebSocket 把 `permission_request` 推给浏览器，弹出**复用模态框**展示 diff（新增/删除行高亮）；
+4. 用户选择：
+   - **允许本次**：放行这一次，钩子退出码 0；
+   - **拒绝**：钩子以退出码 2 阻断，拒绝原因回传给助手；
+   - **本次会话都允许**：放行本次，并把该会话标记为自动放行，后续文件修改不再弹窗。
+
+若用户长时间不响应，后端在 `APPROVAL_TIMEOUT_SECONDS` 后按拒绝处理；审批服务不可达时钩子也**默认拒绝**（fail-safe）。断线重连后，未决的审批请求会重新推送到浏览器。
+
 ## API 摘要
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/sessions` | 会话列表 |
-| POST | `/api/sessions` | 新建 `{kind:"dev"\|"daily"}` |
+| POST | `/api/sessions` | 新建会话 |
 | GET | `/api/sessions/{id}` | 会话详情 + 全部消息 |
 | DELETE | `/api/sessions/{id}` | 删除会话/消息/工作目录 |
 | GET | `/api/sessions/{id}/messages?after=seq` | 增量消息 |
@@ -149,6 +165,9 @@ python3 demo/smoke.py
 | GET/POST | `/api/sessions/{id}/files` | 列出 / 上传文件 |
 | GET | `/api/sessions/{id}/files/download?path=` | 下载文件 |
 | WS | `/ws/{id}` | 订阅事件；发送 `{type:"subscribe",after_seq}`、`{type:"cancel"}` |
+| GET | `/api/sessions/{id}/permissions` | 当前未决的文件修改审批 |
+| POST | `/api/sessions/{id}/permissions/{req_id}` | 裁决 `{decision, allow_all}` |
+| POST | `/internal/approval` | 供 PreToolUse 钩子调用，阻塞等待用户裁决 |
 
 ## 已知限制
 
@@ -158,6 +177,8 @@ python3 demo/smoke.py
 - **内置协议转换层**：考试端点仅 OpenAI 协议，项目内置 LiteLLM 做 Anthropic↔OpenAI 翻译；这会带来少量额外延迟，且转换层对少数边缘字段可能不完全保真。
 - **每轮新起进程**：单轮开销略高，换取更好的隔离与崩溃恢复。
 - **并发/超时**为工程兜底，非严格配额控制。
+- **HITL 仅覆盖文件工具**：通过 Bash 间接修改文件不在拦截范围；如需可扩展钩子匹配。
+- **「本次会话都允许」是进程内状态**：后端重启后失效，需重新确认。
 
 ## 安全
 

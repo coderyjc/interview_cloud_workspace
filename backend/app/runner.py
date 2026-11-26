@@ -7,12 +7,35 @@ session with --session-id <uuid>; later turns continue it with --resume <uuid>.
 import asyncio
 import json
 import os
+import shlex
 import shutil
+import sys
 from typing import AsyncIterator, Optional
 
 # Resolve the CLI binary once. On Windows the global install is a `.cmd` shim,
 # which must be launched through cmd.exe; on Linux (Docker) it's a plain binary.
 CLAUDE_BIN = os.environ.get("CLAUDE_BIN") or shutil.which("claude") or "claude"
+
+# --- Human-in-the-loop: gate file-modifying tools through a PreToolUse hook ---
+_HERE = os.path.dirname(os.path.abspath(__file__))
+HOOK_SCRIPT = os.path.join(_HERE, "approve_hook.py")
+if os.name == "nt":
+    _HOOK_CMD = f'"{sys.executable}" "{HOOK_SCRIPT}"'
+else:
+    _HOOK_CMD = f"{shlex.quote(sys.executable)} {shlex.quote(HOOK_SCRIPT)}"
+
+_HOOK_SETTINGS = {
+    "hooks": {
+        "PreToolUse": [
+            {
+                "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+                "hooks": [
+                    {"type": "command", "command": _HOOK_CMD, "timeout": 1800}
+                ],
+            }
+        ]
+    }
+}
 
 
 def _flatten(content) -> str:
@@ -107,6 +130,8 @@ async def run_turn(
         args += ["--session-id", sid]
     if model:
         args += ["--model", model]
+    # Load the approval hook for this turn.
+    args += ["--settings", json.dumps(_HOOK_SETTINGS)]
 
     if os.name == "nt" and CLAUDE_BIN.lower().endswith((".cmd", ".bat")):
         argv = ["cmd", "/c", CLAUDE_BIN, *args]
@@ -114,6 +139,7 @@ async def run_turn(
         argv = [CLAUDE_BIN, *args]
 
     env = os.environ.copy()
+    env.setdefault("WORKBENCH_INTERNAL_URL", "http://127.0.0.1:8000")
 
     try:
         proc = await asyncio.create_subprocess_exec(

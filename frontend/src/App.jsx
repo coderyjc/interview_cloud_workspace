@@ -4,11 +4,11 @@ import hljs from 'highlight.js/lib/common'
 // ---------------------------------------------------------------- api helpers
 const api = {
   list: () => fetch('/api/sessions').then((r) => r.json()),
-  create: (kind) =>
+  create: () =>
     fetch('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind }),
+      body: JSON.stringify({}),
     }).then((r) => r.json()),
   remove: (id) => fetch(`/api/sessions/${id}`, { method: 'DELETE' }),
   send: (id, content) =>
@@ -142,6 +142,58 @@ function ToolCard({ tool }) {
   )
 }
 
+// ---------------------------------------------------------------- permission modal
+function DiffView({ diff }) {
+  if (!diff) return <div className="no-files">（无差异）</div>
+  return (
+    <pre className="diff">
+      {diff.split('\n').map((line, i) => {
+        let cls = 'd-line'
+        if (line.startsWith('+++') || line.startsWith('---')) cls += ' d-file'
+        else if (line.startsWith('@@')) cls += ' d-hunk'
+        else if (line.startsWith('+')) cls += ' d-add'
+        else if (line.startsWith('-')) cls += ' d-del'
+        return (
+          <div key={i} className={cls}>
+            {line || ' '}
+          </div>
+        )
+      })}
+    </pre>
+  )
+}
+
+function PermissionModal({ req, onDecide }) {
+  return (
+    <div className="modal-overlay">
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <span className="modal-title">需要确认：{req.tool_name} 修改文件</span>
+          <span className="modal-meta">
+            {req.file_path}
+            {req.added || req.removed ? ` · +${req.added} / -${req.removed}` : ''}
+          </span>
+        </div>
+        <div className="modal-body">
+          <DiffView diff={req.diff} />
+        </div>
+        <div className="modal-foot">
+          <button className="btn" onClick={() => onDecide('deny', false)}>
+            拒绝
+          </button>
+          <div style={{ flex: 1 }} />
+          <button className="btn" onClick={() => onDecide('allow', false)}>
+            允许本次
+          </button>
+          <button className="btn primary" onClick={() => onDecide('allow', true)}>
+            本次会话都允许
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------- app
 export default function App() {
   const [sessions, setSessions] = useState([])
@@ -160,6 +212,7 @@ export default function App() {
     }
   })
   const [preview, setPreview] = useState(null)
+  const [permissions, setPermissions] = useState([])
 
   const wsRef = useRef(null)
   const activeRef = useRef(null)
@@ -177,6 +230,18 @@ export default function App() {
       setFiles(await api.files(id))
     } catch {}
   }, [])
+
+  const decidePermission = async (reqId, decision, allowAll) => {
+    if (!active) return
+    setPermissions((prev) => prev.filter((p) => p.id !== reqId))
+    try {
+      await fetch(`/api/sessions/${active}/permissions/${reqId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision, allow_all: !!allowAll }),
+      })
+    } catch {}
+  }
 
   const openPreview = async (path) => {
     if (!active) return
@@ -217,6 +282,7 @@ export default function App() {
     setError('')
     setStatus('idle')
     setFiles([])
+    setPermissions([])
     loadFiles(active)
 
     let closed = false
@@ -255,6 +321,12 @@ export default function App() {
           setStreaming('')
           setStatus('idle')
           loadFiles(active)
+        } else if (ev.type === 'permission_request') {
+          setPermissions((prev) =>
+            prev.some((p) => p.id === ev.request.id) ? prev : [...prev, ev.request]
+          )
+        } else if (ev.type === 'permission_timeout') {
+          setPermissions((prev) => prev.filter((p) => p.id !== ev.id))
         } else if (ev.type === 'error') {
           setError(ev.error || '发生错误')
           setStatus('idle')
@@ -286,9 +358,9 @@ export default function App() {
     endRef.current && endRef.current.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streaming])
 
-  const createSession = async (kind) => {
+  const createSession = async () => {
     try {
-      const s = await api.create(kind)
+      const s = await api.create()
       await loadSessions()
       setActive(s.id)
     } catch {
@@ -357,8 +429,7 @@ export default function App() {
           </button>
         </div>
         <div className="newbtns">
-          <button onClick={() => createSession('dev')}>+ 开发会话</button>
-          <button onClick={() => createSession('daily')}>+ 日常会话</button>
+          <button onClick={() => createSession()}>＋ 新聊天</button>
         </div>
         <div className="sessionlist">
           {sessions.length === 0 && (
@@ -373,7 +444,6 @@ export default function App() {
               onClick={() => setActive(s.id)}
             >
               <div className="title">
-                <span className={`badge ${s.kind}`}>{s.kind === 'dev' ? '开发' : '日常'}</span>
                 <span
                   style={{
                     overflow: 'hidden',
@@ -413,9 +483,9 @@ export default function App() {
         <div className="messages">
           {!active && (
             <div className="empty">
-              选择左侧会话，或新建一个。
+              选择左侧聊天，或新建一个。
               <br />
-              “开发会话”适合写代码 / 跑测试；“日常会话”适合分析材料、整理报告。
+              新建聊天后直接交办任务：写代码、跑测试，或分析材料、整理报告。
             </div>
           )}
           {active && messages.length === 0 && !streaming && (
@@ -500,6 +570,15 @@ export default function App() {
           ))}
         </div>
       </aside>
+
+      {permissions.length > 0 && (
+        <PermissionModal
+          req={permissions[0]}
+          onDecide={(decision, allowAll) =>
+            decidePermission(permissions[0].id, decision, allowAll)
+          }
+        />
+      )}
 
       {preview && <PreviewModal data={preview} onClose={() => setPreview(null)} />}
     </div>

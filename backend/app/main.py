@@ -5,6 +5,7 @@
 - SQLite (stdlib) is the source of truth for the transcript shown in the UI
 """
 import asyncio
+import difflib
 import json
 import os
 import shutil
@@ -33,6 +34,7 @@ DB_PATH = DATA_DIR / "app.db"
 MODEL = os.environ.get("ANTHROPIC_MODEL") or None
 MAX_CONCURRENT = int(os.environ.get("MAX_CONCURRENT_RUNS", "4"))
 RUN_TIMEOUT = int(os.environ.get("RUN_TIMEOUT_SECONDS", "1800"))
+APPROVAL_TIMEOUT = int(os.environ.get("APPROVAL_TIMEOUT_SECONDS", "900"))
 STATIC_DIR = Path(os.environ.get("STATIC_DIR", "./static")).resolve()
 
 WORKSPACES.mkdir(parents=True, exist_ok=True)
@@ -234,6 +236,8 @@ class Run:
 
 runs: dict[str, Run] = {}
 subs: dict[str, set[Conn]] = {}
+allow_all_sessions: set[str] = set()
+pending_approvals: dict[str, dict] = {}
 
 
 async def broadcast(sid: str, event: dict) -> None:
@@ -334,7 +338,7 @@ def health():
 def create_session(body: NewSession):
     sid = str(uuid.uuid4())
     (WORKSPACES / sid).mkdir(parents=True, exist_ok=True)
-    title = body.title or ("代码开发会话" if body.kind == "dev" else "日常任务会话")
+    title = body.title or "新聊天"
     with _db_lock:
         conn = _connect()
         conn.execute(
@@ -376,6 +380,12 @@ async def delete_session(sid: str):
             run.proc.terminate()
         except ProcessLookupError:
             pass
+    allow_all_sessions.discard(sid)
+    for rid, it in list(pending_approvals.items()):
+        if it["sid"] == sid:
+            if not it["future"].done():
+                it["future"].set_result("deny")
+            pending_approvals.pop(rid, None)
     with _db_lock:
         conn = _connect()
         conn.execute("delete from messages where session_id=?", (sid,))
@@ -425,6 +435,140 @@ async def cancel_run(sid: str):
             run.proc.terminate()
         except ProcessLookupError:
             pass
+    return {"ok": True}
+
+
+# ----------------------------------------------------------------------------
+# Human-in-the-loop approval for file modifications
+# ----------------------------------------------------------------------------
+class ApprovalIn(BaseModel):
+    session_id: str
+    tool_name: str
+    tool_input: dict = {}
+    cwd: str = ""
+
+
+class ApprovalDecision(BaseModel):
+    decision: str
+    allow_all: bool = False
+
+
+def _read_text(path: str):
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except Exception:
+        return None
+
+
+def _apply_edit(old: str, old_s: str, new_s: str, replace_all: bool) -> str:
+    if not old_s:
+        return old
+    return old.replace(old_s, new_s) if replace_all else old.replace(old_s, new_s, 1)
+
+
+def _compute_change(tool_name: str, tool_input: dict, cwd: str) -> dict:
+    fp = (
+        tool_input.get("file_path")
+        or tool_input.get("notebook_path")
+        or tool_input.get("path")
+        or ""
+    )
+    abs_fp = fp
+    if fp and not os.path.isabs(fp):
+        abs_fp = os.path.join(cwd or "", fp)
+    old = ""
+    if abs_fp and os.path.isfile(abs_fp):
+        old = _read_text(abs_fp) or ""
+
+    new = None
+    if tool_name == "Write":
+        new = tool_input.get("content")
+        if new is None:
+            new = ""
+    elif tool_name == "Edit":
+        new = _apply_edit(
+            old, tool_input.get("old_string", ""),
+            tool_input.get("new_string", ""), bool(tool_input.get("replace_all")),
+        )
+    elif tool_name == "MultiEdit":
+        new = old
+        for e in tool_input.get("edits") or []:
+            new = _apply_edit(
+                new, e.get("old_string", ""), e.get("new_string", ""),
+                bool(e.get("replace_all")),
+            )
+
+    if new is None:  # NotebookEdit / unknown -> show raw input
+        return {
+            "file_path": fp,
+            "diff": json.dumps(tool_input, ensure_ascii=False, indent=2),
+            "added": 0, "removed": 0, "raw": True,
+        }
+
+    diff_lines = list(difflib.unified_diff(
+        old.splitlines(), new.splitlines(),
+        fromfile=fp + "（当前）", tofile=fp + "（修改后）", lineterm="", n=3,
+    ))
+    added = sum(1 for l in diff_lines if l.startswith("+") and not l.startswith("+++"))
+    removed = sum(1 for l in diff_lines if l.startswith("-") and not l.startswith("---"))
+    return {
+        "file_path": fp,
+        "diff": "\n".join(diff_lines),
+        "added": added, "removed": removed, "raw": False,
+    }
+
+
+@app.post("/internal/approval")
+async def internal_approval(body: ApprovalIn):
+    sid = body.session_id
+    if sid in allow_all_sessions:
+        return {"decision": "allow", "reason": "本会话已允许全部文件修改"}
+
+    info = _compute_change(body.tool_name, body.tool_input, body.cwd)
+    req_id = str(uuid.uuid4())
+    fut = asyncio.get_running_loop().create_future()
+    request = {
+        "id": req_id,
+        "tool_name": body.tool_name,
+        "file_path": info["file_path"],
+        "diff": info["diff"],
+        "added": info["added"],
+        "removed": info["removed"],
+        "raw": info["raw"],
+    }
+    pending_approvals[req_id] = {"future": fut, "sid": sid, "request": request}
+    await broadcast(sid, {"type": "permission_request", "request": request})
+
+    try:
+        decision = await asyncio.wait_for(fut, timeout=APPROVAL_TIMEOUT)
+    except asyncio.TimeoutError:
+        decision = "deny"
+        await broadcast(sid, {"type": "permission_timeout", "id": req_id})
+    pending_approvals.pop(req_id, None)
+    return {
+        "decision": decision,
+        "reason": "用户已允许" if decision == "allow" else "用户已拒绝",
+    }
+
+
+@app.get("/api/sessions/{sid}/permissions")
+def list_permissions(sid: str):
+    return [it["request"] for it in pending_approvals.values() if it["sid"] == sid]
+
+
+@app.post("/api/sessions/{sid}/permissions/{req_id}")
+async def decide_permission(sid: str, req_id: str, body: ApprovalDecision):
+    if body.allow_all:
+        allow_all_sessions.add(sid)
+    decision = "allow" if body.decision == "allow" else "deny"
+    item = pending_approvals.get(req_id)
+    if item and not item["future"].done():
+        item["future"].set_result(decision)
+    if body.allow_all:
+        for it in list(pending_approvals.values()):
+            if it["sid"] == sid and not it["future"].done():
+                it["future"].set_result("allow")
     return {"ok": True}
 
 
@@ -537,6 +681,9 @@ async def ws_endpoint(ws: WebSocket, sid: str):
                 after = int(msg.get("after_seq") or 0)
                 for m in fetch_messages(sid, after):
                     conn.q.put_nowait({"type": "message", "message": m})
+                for it in pending_approvals.values():
+                    if it["sid"] == sid:
+                        conn.q.put_nowait({"type": "permission_request", "request": it["request"]})
             elif mtype == "cancel":
                 run = runs.get(sid)
                 if run and run.proc is not None:

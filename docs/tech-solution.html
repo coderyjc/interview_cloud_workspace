@@ -324,6 +324,14 @@
       实测考试端点仅支持 OpenAI 协议：<code>POST …/v1/chat/completions</code> 返回 200，而 Anthropic 的 <code>POST …/v1/messages</code> 返回 404「此接口未开放」。
       因此容器启动时用 <code>EXAM_*</code> 生成 LiteLLM 配置，把 Claude Code 的 Anthropic 请求（含 <code>tool_use</code> 与 SSE 流）翻译为 OpenAI 协议。
     </div>
+
+    <h3>人工确认（Human-in-the-loop）</h3>
+    <ul>
+      <li>通过 Claude Code 的 <code>PreToolUse</code> 钩子，在 <code>Write / Edit / MultiEdit / NotebookEdit</code> 执行前阻塞。</li>
+      <li>钩子回调后端 <code>/internal/approval</code>；后端读取当前文件与修改后内容，计算统一 diff（新增/删除行）。</li>
+      <li>WebSocket 推送 <code>permission_request</code>，浏览器复用模态框展示 diff，提供「允许 / 拒绝 / 本次会话都允许」。</li>
+      <li>允许→钩子退出码 0 放行；拒绝→退出码 2 阻断并把原因回传给模型；「本次会话都允许」在后端标记该会话自动放行。</li>
+    </ul>
   </section>
 
   <section>
@@ -343,7 +351,7 @@
     <table>
       <thead><tr><th>表</th><th>关键字段</th></tr></thead>
       <tbody>
-        <tr><td><code>sessions</code></td><td>id(UUID) · title · kind(dev/daily) · status · claude_started · 时间戳</td></tr>
+        <tr><td><code>sessions</code></td><td>id(UUID) · title · status · claude_started · 时间戳</td></tr>
         <tr><td><code>messages</code></td><td>session_id · seq(单调) · role · type(text/tool) · tool_uid · payload(JSON)</td></tr>
       </tbody>
     </table>

@@ -82,8 +82,8 @@ def main():
     print("health:", req("GET", "/api/health"))
 
     # ---- scenario A: code development ----
-    dev = req("POST", "/api/sessions", {"kind": "dev"})
-    print("\n[dev] created session", dev["id"])
+    dev = req("POST", "/api/sessions", {})
+    print("\n[code task] created session", dev["id"])
     req("POST", f"/api/sessions/{dev['id']}/messages", {"content": (
         "在当前目录写一个 Python 小工具 csv2md.py，把 CSV 文件转换成 Markdown 表格；"
         "另外写一个测试 test_csv2md.py，写完后用 python 运行测试并确认通过。"
@@ -92,8 +92,8 @@ def main():
     dump(dev["id"])
 
     # ---- scenario B: daily task with uploaded material ----
-    daily = req("POST", "/api/sessions", {"kind": "daily"})
-    print("\n[daily] created session", daily["id"])
+    daily = req("POST", "/api/sessions", {})
+    print("\n[material task] created session", daily["id"])
     multipart(
         f"/api/sessions/{daily['id']}/files",
         "meeting.txt",
